@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Simulador: Operação Caixa Blindado</title>
+  <style>
+    body { background-color: #0b1329; color: #f8fafc; font-family: sans-serif; padding: 20px; display: flex; justify-content: center; }
+    .painel { width: 100%; max-width: 780px; background-color: #162035; border: 1px solid #2c3e5d; border-radius: 10px; padding: 20px; }
+    .etiqueta { background: #0284c7; color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
+    .quadro { background: #0c1220; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; margin: 12px 0; }
+    .documento { background: #ffffff; color: #0f172a; padding: 14px; border-left: 5px solid #0284c7; border-radius: 4px; font-size: 14px; line-height: 1.6; }
+    label { display: block; margin-top: 10px; font-size: 13px; font-weight: bold; }
+    input, select, textarea { width: 100%; padding: 8px; margin-top: 4px; background: #060911; border: 1px solid #2c3e5d; color: #fff; border-radius: 4px; box-sizing: border-box; }
+    input:focus, textarea:focus { border-color: #38bdf8; outline: none; }
+    .dupla { display: flex; gap: 10px; }
+    .dupla > div { flex: 1; }
+    .botao { width: 100%; padding: 12px; margin-top: 14px; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; text-transform: uppercase; background: #38bdf8; color: #082f49; }
+    .botao-verde { background: #22c55e; color: #052e16; }
+    .botao-vermelho { background: #ef4444; color: #fff; }
+    .codigo-resultado { background: #0369a1; color: #fff; padding: 15px; border-radius: 6px; text-align: center; font-size: 24px; font-family: monospace; letter-spacing: 3px; font-weight: bold; border: 2px dashed #38bdf8; margin: 12px 0; }
+    .aviso-erro { color: #f87171; font-size: 12px; margin-top: 4px; display: none; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+    th, td { padding: 6px; border-bottom: 1px solid #2c3e5d; text-align: left; }
+    th { color: #38bdf8; }
+  </style>
+
+  <script>
+    var etapas = [
+      {
+        cargo: "Comprador / Solicitante",
+        tarefa: "Confronto de Cotação Homologada com Ordem de Compra",
+        doc: "<strong>DOCUMENTO DISPONÍVEL:</strong><br>• Cotação Comercial homologada em sistema nº 804: 80 resmas de papel A4 a R$ 25,00 por resma.<br>• Pedido de Compra gerado pelo sistema: 80 resmas de papel A4 a R$ 32,00 por resma (Total de R$ 2.560,00 emitido em favor da Gráfica Express).",
+        correto: "Recusar / Bloquear"
+      },
+      {
+        cargo: "Almoxarife",
+        tarefa: "Inspeção de Mercadoria e Conferência do Canhoto de Entrega",
+        doc: "<strong>DOCUMENTO DISPONÍVEL:</strong><br>• Nota Fiscal Eletrónica (NF-e) nº 10.420 discriminando 30 teclados de computador.<br>• Relatório de Descarregamento Físico: Foram contabilizadas e entregues pela transportadora 20 unidades de teclados na doca de entrada.",
+        correto: "Recusar / Bloquear"
+      },
+      {
+        cargo: "Analista de Contas a Pagar",
+        tarefa: "Conferência Cruzada (Three-Way Matching)",
+        doc: "<strong>DOCUMENTO DISPONÍVEL:</strong><br>• Pedido de Compra nº 410: Manutenção de ar condicionado no valor de R$ 1.800,00 com aprovação de alçada.<br>• Relatório Técnico de Execução: Serviço inspecionado e atestado sem pendências pela coordenação de manutenção.<br>• Nota Fiscal de Serviços (NFS-e): Valor de R$ 1.800,00 com retenções legais destacadas de acordo com a legislação municipal.",
+        correto: "Aprovar / Prosseguir"
+      },
+      {
+        cargo: "Gerente Financeiro",
+        tarefa: "Validação Cadastral e Titularidade Bancária",
+        doc: "<strong>DOCUMENTO DISPONÍVEL:</strong><br>• Fatura de consultoria empresarial emitida pela entidade jurídica prestadora (CNPJ cadastrado no ERP).<br>• Mensagem anexa: O fornecedor solicita que a transferência de R$ 4.500,00 seja realizada via chave PIX associada ao CPF individual de um dos administradores.",
+        correto: "Recusar / Bloquear"
+      },
+      {
+        cargo: "Tesoureiro",
+        tarefa: "Execução Financeira e Registo Contábil de Baixa",
+        doc: "<strong>DOCUMENTO DISPONÍVEL:</strong><br>• Título a pagar: Concessionária de Energia Elétrica devidamente aprovado pelo gestor.<br>• Dados de Tesouraria: Código de barras validado no portal bancário corporativo, saldo em conta corrente verificado e lançamento de débito/crédito contábil conferido.",
+        correto: "Aprovar / Prosseguir"
+      }
+    ];
+
+    var indiceEtapa = 0;
+    var dadosSessao = { turma: "", grupo: "", alunos: [], inicio: null, fim: null, acoes: [], ata: "", parecerFinal: "", codigo: "" };
+
+    function trocarSecao(secaoAlvo) {
+      var lista = ["fase-cadastro", "fase-operacao", "fase-deliberacao", "fase-sucesso", "fase-login-prof", "fase-relatorio-prof"];
+      for (var i = 0; i < lista.length; i++) {
+        var el = document.getElementById(lista[i]);
+        if (el) {
+          el.style.display = (lista[i] === secaoAlvo) ? "block" : "none";
+        }
+      }
+      window.scrollTo(0, 0);
+    }
+
+    function comecarSimulador() {
+      var t = document.getElementById("campo-turma").value;
+      var g = document.getElementById("campo-grupo").value;
+      var a1 = document.getElementById("aluno-1").value.trim();
+      var a2 = document.getElementById("aluno-2").value.trim();
+      var a3 = document.getElementById("aluno-3").value.trim();
+      var a4 = document.getElementById("aluno-4").value.trim();
+      var a5 = document.getElementById("aluno-5").value.trim() || "Não designado";
+
+      var erro = document.getElementById("erro-cadastro");
+      if (!t || !g || !a1 || !a2 || !a3 || !a4) {
+        erro.style.display = "block";
+        return;
+      }
+      erro.style.display = "none";
+
+      dadosSessao.turma = t;
+      dadosSessao.grupo = g;
+      dadosSessao.alunos = [a1, a2, a3, a4, a5];
+      dadosSessao.inicio = new Date();
+      dadosSessao.acoes = [];
+
+      montarEtapa(0);
+      trocarSecao("fase-operacao");
+    }
+
+    function montarEtapa(num) {
+      indiceEtapa = num;
+      var obj = etapas[num];
+      document.getElementById("indicador-passo").innerHTML = "Etapa " + (num + 1) + " de " + etapas.length;
+      document.getElementById("titulo-cargo").innerHTML = obj.cargo + " (" + dadosSessao.alunos[num] + ")";
+      document.getElementById("descricao-tarefa").innerHTML = "Tarefa técnica: " + obj.tarefa;
+      document.getElementById("texto-documento").innerHTML = obj.doc;
+      document.getElementById("parecer-aluno").value = "";
+      document.getElementById("erro-etapa").style.display = "none";
+    }
+
+    function responderEtapa(decisaoFeita) {
+      var just = document.getElementById("parecer-aluno").value.trim();
+      var erro = document.getElementById("erro-etapa");
+
+      if (just.length < 15) {
+        erro.style.display = "block";
+        return;
+      }
+      erro.style.display = "none";
+
+      var info = etapas[indiceEtapa];
+      dadosSessao.acoes.push({
+        etapa: indiceEtapa + 1,
+        cargo: info.cargo,
+        aluno: dadosSessao.alunos[indiceEtapa],
+        decisao: decisaoFeita,
+        justificacao: just,
+        acertou: (decisaoFeita === info.correto)
+      });
+
+      if (indiceEtapa + 1 < etapas.length) {
+        montarEtapa(indiceEtapa + 1);
+      } else {
+        document.getElementById("texto-ata").value = "";
+        trocarSecao("fase-deliberacao");
+      }
+    }
+
+    function concluirAtividade() {
+      var ata = document.getElementById("texto-ata").value.trim();
+      var erro = document.getElementById("erro-ata");
+
+      if (ata.length < 25) {
+        erro.style.display = "block";
+        return;
+      }
+      erro.style.display = "none";
+
+      dadosSessao.ata = ata;
+      dadosSessao.parecerFinal = document.getElementById("decisao-colegiada").value;
+      dadosSessao.fim = new Date();
+
+      var codT = dadosSessao.turma.indexOf("2A") !== -1 ? "2A" : "2B";
+      var numG = dadosSessao.grupo.replace(/[^0-9]/g, "");
+      var rand = Math.floor(1000 + Math.random() * 9000);
+      dadosSessao.codigo = codT + "-GRP0" + numG + "-" + rand;
+
+      try {
+        var base = JSON.parse(localStorage.getItem("dados_caixa_blindado") || "[]");
+        base.push(dadosSessao);
+        localStorage.setItem("dados_caixa_blindado", JSON.stringify(base));
+      } catch (e) {}
+
+      var segsTotais = Math.max(1, Math.round((dadosSessao.fim - dadosSessao.inicio) / 1000));
+      var mins = Math.floor(segsTotais / 60);
+      var segs = segsTotais % 60;
+
+      document.getElementById("caixa-codigo").innerHTML = dadosSessao.codigo;
+      document.getElementById("res-t").innerHTML = dadosSessao.turma;
+      document.getElementById("res-g").innerHTML = dadosSessao.grupo;
+      document.getElementById("res-ini").innerHTML = dadosSessao.inicio.toLocaleTimeString("pt-BR");
+      document.getElementById("res-fim").innerHTML = dadosSessao.fim.toLocaleTimeString("pt-BR");
+      document.getElementById("res-dur").innerHTML = mins + " min e " + segs + " seg";
+
+      trocarSecao("fase-sucesso");
+    }
+
+    function enviarEmailDocente() {
+      var destinatario = "daniellafariab@gmail.com";
+      var assunto = encodeURIComponent("Registo de Atividade - " + dadosSessao.turma + " - " + dadosSessao.grupo + " [" + dadosSessao.codigo + "]");
+      
+      var corpo = "RELATÓRIO DA OPERAÇÃO CAIXA BLINDADO\n";
+      corpo += "====================================\n\n";
+      corpo += "Código Único: " + dadosSessao.codigo + "\n";
+      corpo += "Turma: " + dadosSessao.turma + "\n";
+      corpo += "Grupo: " + dadosSessao.grupo + "\n";
+      corpo += "Horário: " + dadosSessao.inicio.toLocaleTimeString("pt-BR") + " às " + dadosSessao.fim.toLocaleTimeString("pt-BR") + "\n\n";
+      corpo += "INTEGRANTES E FUNÇÕES:\n";
+      for (var i = 0; i < dadosSessao.acoes.length; i++) {
+        var a = dadosSessao.acoes[i];
+        corpo += "- " + a.cargo + ": " + a.aluno + "\n";
+        corpo += "  Decisão: " + a.decisao + "\n";
+        corpo += "  Justificação Técnica: " + a.justificacao + "\n\n";
+      }
+      corpo += "ATA DA MESA REDONDA:\n" + dadosSessao.ata + "\n\n";
+      corpo += "PARECER COLEGIADO FINAL: " + dadosSessao.parecerFinal + "\n";
+
+      window.location.href = "mailto:" + destinatario + "?subject=" + assunto + "&body=" + encodeURIComponent(corpo);
+    }
+
+    function validarProfessor() {
+      var senha = document.getElementById("senha-docente").value;
+      if (senha === "prof123") {
+        trocarSecao("fase-relatorio-prof");
+        desenharQuadroProfessor();
+      } else {
+        alert("Senha incorreta! Digite: prof123");
+      }
+    }
+
+    function desenharQuadroProfessor() {
+      var base = [];
+      try { base = JSON.parse(localStorage.getItem("dados_caixa_blindado") || "[]"); } catch (e) {}
+
+      var cont = document.getElementById("quadro-registos");
+      if (base.length === 0) {
+        cont.innerHTML = "<p style='color:#94a3b8;'>Nenhum registo guardado neste computador.</p>";
+        return;
+      }
+
+      var html = "";
+      for (var i = 0; i < base.length; i++) {
+        var g = base[i];
+        html += "<div class='quadro'>";
+        html += "<div style='display:flex; justify-content:space-between;'><strong>" + g.turma + " - " + g.grupo + "</strong><span class='etiqueta'>" + g.codigo + "</span></div>";
+        html += "<p style='font-size:12px; color:#94a3b8; margin:4px 0;'>Horário: " + new Date(g.inicio).toLocaleTimeString("pt-BR") + " até " + new Date(g.fim).toLocaleTimeString("pt-BR") + "</p>";
+        html += "<p style='font-size:12px;'><strong>Equipa:</strong> " + g.alunos.join(", ") + "</p>";
+        html += "<table><thead><tr><th>Função (Aluno)</th><th>Decisão</th><th>Justificação do Aluno</th><th>Resultado</th></tr></thead><tbody>";
+        for (var j = 0; j < g.acoes.length; j++) {
+          var a = g.acoes[j];
+          html += "<tr>";
+          html += "<td>" + a.cargo + " (" + a.aluno + ")</td>";
+          html += "<td><strong>" + a.decisao + "</strong></td>";
+          html += "<td>" + a.justificacao + "</td>";
+          html += "<td>" + (a.acertou ? "✅ Correto" : "⚠️ Incorreto") + "</td>";
+          html += "</tr>";
+        }
+        html += "</tbody></table>";
+        html += "<div style='margin-top:8px; font-size:12px; background:#060911; padding:6px; border-radius:4px;'><strong>Ata da Mesa Redonda:</strong> " + g.ata + "<br><strong>Decisão Final:</strong> " + g.parecerFinal + "</div>";
+        html += "</div>";
+      }
+      cont.innerHTML = html;
+    }
+
+    function descarregarCSV() {
+      var base = [];
+      try { base = JSON.parse(localStorage.getItem("dados_caixa_blindado") || "[]"); } catch (e) {}
+      if (base.length === 0) { alert("Não existem dados para exportar."); return; }
+
+      var csv = "Codigo;Turma;Grupo;Inicio;Termino;Alunos;Parecer_Final;Ata\n";
+      for (var i = 0; i < base.length; i++) {
+        var r = base[i];
+        csv += '"' + r.codigo + '";"' + r.turma + '";"' + r.grupo + '";"' + r.inicio + '";"' + r.fim + '";"' + r.alunos.join(", ") + '";"' + r.parecerFinal + '";"' + (r.ata || "").replace(/"/g, '""') + '"\n';
+      }
+
+      var blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+      var link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "relatorio_caixa_blindado.csv";
+      link.click();
+    }
+
+    function apagarMemoria() {
+      if (confirm("Deseja apagar os registos desta máquina?")) {
+        localStorage.removeItem("dados_caixa_blindado");
+        desenharQuadroProfessor();
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <div class="painel">
+
+    <!-- FASE 1: ENTRADA -->
+    <div id="fase-cadastro" style="display: block;">
+      <span class="etiqueta">Simulação de Gestão</span>
+      <h2 style="margin: 8px 0 4px 0;">Operação Caixa Blindado</h2>
+      <p style="color: #94a3b8; font-size: 13px; margin-bottom: 14px;">Integração do Contas a Pagar e Segregação de Funções</p>
+
+      <div class="dupla">
+        <div>
+          <label>Turma *:</label>
+          <select id="campo-turma">
+            <option value="">Selecione a turma...</option>
+            <option value="Turma 2A">Turma 2A</option>
+            <option value="Turma 2B">Turma 2B</option>
+          </select>
+        </div>
+        <div>
+          <label>Grupo *:</label>
+          <select id="campo-grupo">
+            <option value="">Selecione o grupo...</option>
+            <option value="Grupo 1">Grupo 1</option>
+            <option value="Grupo 2">Grupo 2</option>
+            <option value="Grupo 3">Grupo 3</option>
+            <option value="Grupo 4">Grupo 4</option>
+            <option value="Grupo 5">Grupo 5</option>
+            <option value="Grupo 6">Grupo 6</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="dupla">
+        <div>
+          <label>1. Comprador / Solicitante *:</label>
+          <input type="text" id="aluno-1" placeholder="Nome completo do aluno">
+        </div>
+        <div>
+          <label>2. Almoxarife (Recebimento) *:</label>
+          <input type="text" id="aluno-2" placeholder="Nome completo do aluno">
+        </div>
+      </div>
+
+      <div class="dupla">
+        <div>
+          <label>3. Analista de Contas a Pagar *:</label>
+          <input type="text" id="aluno-3" placeholder="Nome completo do aluno">
+        </div>
+        <div>
+          <label>4. Gerente Financeiro (Aprovação) *:</label>
+          <input type="text" id="aluno-4" placeholder="Nome completo do aluno">
+        </div>
+      </div>
+
+      <div>
+        <label>5. Tesoureiro (Opcional):</label>
+        <input type="text" id="aluno-5" placeholder="Nome completo do 5º aluno (se houver)">
+      </div>
+
+      <p id="erro-cadastro" class="aviso-erro">Por favor, preencha a turma, o grupo e os 4 primeiros componentes da equipa antes de prosseguir.</p>
+
+      <button type="button" class="botao" onclick="comecarSimulador()">Iniciar Missão</button>
+    </div>
+
+    <!-- FASE 2: ETAPAS DE OPERAÇÃO -->
+    <div id="fase-operacao" style="display: none;">
+      <span class="etiqueta" id="indicador-passo">Etapa 1 de 5</span>
+      <h3 id="titulo-cargo" style="margin-top: 8px;">Função</h3>
+      <p id="descricao-tarefa" style="color: #94a3b8; font-size: 13px;"></p>
+
+      <div class="quadro">
+        <div id="texto-documento" class="documento"></div>
+      </div>
+
+      <label>Parecer Técnico Obrigatório (Justifique formalmente a razão de aprovar ou recusar):</label>
+      <textarea id="parecer-aluno" rows="3" placeholder="Escreva aqui a sua análise com base nos documentos acima antes de tomar uma decisão..."></textarea>
+      
+      <p id="erro-etapa" class="aviso-erro">Atenção: É obrigatório redigir a justificação técnica completa (mínimo de 15 caracteres) antes de aprovar ou recusar.</p>
+
+      <div class="dupla">
+        <button type="button" class="botao botao-vermelho" onclick="responderEtapa('Recusar / Bloquear')">Recusar / Bloquear</button>
+        <button type="button" class="botao botao-verde" onclick="responderEtapa('Aprovar / Prosseguir')">Aprovar / Prosseguir</button>
+      </div>
+    </div>
+
+    <!-- FASE 3: MESA REDONDA -->
+    <div id="fase-deliberacao" style="display: none;">
+      <span class="etiqueta">Decisão Coletiva</span>
+      <h3 style="margin-top: 8px;">Mesa Redonda: Fecho do Expediente</h3>
+      <p style="color: #94a3b8; font-size: 13px;">Reúnam os membros da equipa para sintetizar as ocorrências do dia antes de fechar o lote.</p>
+
+      <div class="quadro">
+        <label>Ata Coletiva do Grupo (O que cada membro identificou e quais medidas foram adotadas?):</label>
+        <textarea id="texto-ata" rows="5" placeholder="Exemplo de estrutura:
+- O Comprador identificou...
+- O Almoxarife conferiu...
+- O Analista de Contas a Pagar verificou...
+- O Gerente Financeiro barrou...
+- O Tesoureiro registou..."></textarea>
+
+        <p id="erro-ata" class="aviso-erro">Preenchimento obrigatório da Ata Coletiva antes do encerramento final (mínimo de 25 caracteres).</p>
+
+        <label>Parecer Colegiado Final do Lote:</label>
+        <select id="decisao-colegiada">
+          <option value="Lote Aprovado com Ressalvas Operacionais">Lote Aprovado com Ressalvas Operacionais</option>
+          <option value="Lote Bloqueado e Encaminhado para Auditoria Externa">Lote Bloqueado e Encaminhado para Auditoria Externa</option>
+          <option value="Lote Homologado Integralmente sem Ressalvas">Lote Homologado Integralmente sem Ressalvas</option>
+        </select>
+      </div>
+
+      <button type="button" class="botao botao-verde" onclick="concluirAtividade()">Finalizar e Gerar Código</button>
+    </div>
+
+    <!-- FASE 4: CÓDIGO FINAL DO GRUPO -->
+    <div id="fase-sucesso" style="display: none; text-align: center;">
+      <span class="etiqueta">Protocolo Emitido</span>
+      <h2 style="margin-top: 8px;">Trabalho Concluído</h2>
+      <p style="color: #94a3b8; font-size: 13px;">Código gerado com sucesso. Envie os dados diretamente para o professor:</p>
+
+      <div id="caixa-codigo" class="codigo-resultado">---</div>
+
+      <button type="button" class="botao botao-verde" onclick="enviarEmailDocente()" style="margin-top: 5px;">
+        ✉️ Enviar Dados do Grupo por E-mail (daniellafariab@gmail.com)
+      </button>
+
+      <div class="quadro" style="text-align: left; font-size: 13px; line-height: 1.8; margin-top: 15px;">
+        <div><strong>Turma:</strong> <span id="res-t"></span></div>
+        <div><strong>Grupo:</strong> <span id="res-g"></span></div>
+        <div><strong>Início:</strong> <span id="res-ini"></span></div>
+        <div><strong>Término:</strong> <span id="res-fim"></span></div>
+        <div><strong>Duração Total:</strong> <span id="res-dur"></span></div>
+      </div>
+
+      <button type="button" onclick="trocarSecao('fase-login-prof')" style="background: none; border: none; color: #64748b; font-size: 12px; cursor: pointer; text-decoration: underline; margin-top: 15px;">
+        Área do Docente
+      </button>
+    </div>
+
+    <!-- FASE 5: ACESSO PROFESSOR -->
+    <div id="fase-login-prof" style="display: none;">
+      <span class="etiqueta">Acesso Restrito</span>
+      <h3 style="margin-top: 8px;">Autenticação do Docente</h3>
+      <input type="password" id="senha-docente" placeholder="Senha: prof123">
+      <button type="button" class="botao" onclick="validarProfessor()">Entrar no Painel</button>
+      <button type="button" onclick="trocarSecao('fase-sucesso')" style="background:none; border:none; color:#94a3b8; width:100%; margin-top:8px; cursor:pointer;">Voltar</button>
+    </div>
+
+    <!-- FASE 6: PAINEL PROFESSOR -->
+    <div id="fase-relatorio-prof" style="display: none;">
+      <span class="etiqueta">Auditoria Pedagógica</span>
+      <h3 style="margin-top: 8px;">Relatório de Desempenho e Notas</h3>
+
+      <div class="dupla">
+        <button type="button" class="botao" onclick="descarregarCSV()">Exportar CSV (Excel)</button>
+        <button type="button" class="botao botao-vermelho" onclick="apagarMemoria()">Limpar Registos Desta Máquina</button>
+      </div>
+
+      <div id="quadro-registos" style="margin-top: 12px;"></div>
+
+      <button type="button" class="botao" style="margin-top: 14px;" onclick="location.reload()">Reiniciar Nova Equipa</button>
+    </div>
+
+  </div>
+
+</body>
+</html>
